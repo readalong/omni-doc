@@ -1,0 +1,67 @@
+{
+  "url": "https://api.github.com/repos/example-org/example-repo/pulls/42",
+  "id": 1234567890,
+  "node_id": "PR_kwDOAbCdEf5GHIJ",
+  "html_url": "https://github.com/example-org/example-repo/pull/42",
+  "diff_url": "https://github.com/example-org/example-repo/pull/42.diff",
+  "patch_url": "https://github.com/example-org/example-repo/pull/42.patch",
+  "issue_url": "https://api.github.com/repos/example-org/example-repo/issues/42",
+  "number": 42,
+  "state": "open",
+  "locked": false,
+  "title": "Add new user profile and settings endpoints",
+  "user": {
+    "login": "developer123",
+    "id": 9876543,
+    "type": "User"
+  },
+  "body": "## Summary\n\nThis PR adds new optional parameters to the `/users/{user_id}` endpoint:\n- `include_profile`: Include user profile data in response\n- `include_settings`: Include user settings in response\n\n## Changes\n\n- Modified `get_user` endpoint to accept new parameters\n- Added `UserService` class for user operations\n- Updated API documentation\n\n## Testing\n\n- [x] Unit tests added\n- [x] Integration tests passing\n- [ ] Documentation updated\n\nCloses #41",
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T14:45:00Z",
+  "closed_at": null,
+  "merged_at": null,
+  "merge_commit_sha": null,
+  "assignee": null,
+  "assignees": [],
+  "requested_reviewers": [
+    {
+      "login": "reviewer1",
+      "id": 1111111
+    }
+  ],
+  "labels": [
+    {
+      "id": 123,
+      "name": "enhancement",
+      "color": "84b6eb"
+    },
+    {
+      "id": 456,
+      "name": "api",
+      "color": "fbca04"
+    }
+  ],
+  "milestone": null,
+  "draft": false,
+  "commits": 3,
+  "additions": 85,
+  "deletions": 5,
+  "changed_files": 3,
+  "head": {
+    "label": "developer123:feature/user-profile-settings",
+    "ref": "feature/user-profile-settings",
+    "sha": "abc123def456789"
+  },
+  "base": {
+    "label": "example-org:main",
+    "ref": "main",
+    "sha": "fedcba987654321"
+  },
+  "comments": 2,
+  "review_comments": 1,
+  "maintainer_can_modify": true,
+  "commits_url": "https://api.github.com/repos/example-org/example-repo/pulls/42/commits",
+  "review_comments_url": "https://api.github.com/repos/example-org/example-repo/pulls/42/comments",
+  "comments_url": "https://api.github.com/repos/example-org/example-repo/issues/42/comments",
+  "statuses_url": "https://api.github.com/repos/example-org/example-repo/statuses/abc123def456789"
+}

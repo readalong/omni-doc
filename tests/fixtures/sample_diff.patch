@@ -1,0 +1,110 @@
+diff --git a/src/api/endpoints.py b/src/api/endpoints.py
+index abc1234..def5678 100644
+--- a/src/api/endpoints.py
++++ b/src/api/endpoints.py
+@@ -15,8 +15,15 @@ from .models import User, Response
+
+ router = APIRouter()
+
++
+ @router.get("/users/{user_id}")
+-async def get_user(user_id: int) -> User:
++async def get_user(
++    user_id: int,
++    include_profile: bool = False,
++    include_settings: bool = False,
++) -> User:
+     """Get a user by ID.
+
+     Args:
+@@ -24,9 +31,24 @@ async def get_user(user_id: int) -> User:
++        include_profile: If True, include user profile data.
++        include_settings: If True, include user settings.
+
+     Returns:
+         User object with the specified ID.
++
++    Raises:
++        HTTPException: If user is not found.
+     """
+-    return await user_service.get(user_id)
++    user = await user_service.get(user_id)
++    if not user:
++        raise HTTPException(status_code=404, detail="User not found")
++
++    if include_profile:
++        user.profile = await profile_service.get(user_id)
++
++    if include_settings:
++        user.settings = await settings_service.get(user_id)
++
++    return user
+
+
+ @router.post("/users")
+diff --git a/src/services/user_service.py b/src/services/user_service.py
+new file mode 100644
+index 0000000..789abcd
+--- /dev/null
++++ b/src/services/user_service.py
+@@ -0,0 +1,45 @@
++"""User service module for handling user operations."""
++
++from typing import Optional
++from sqlalchemy.orm import Session
++
++from .models import User
++from .database import get_db
++
++
++class UserService:
++    """Service class for user operations."""
++
++    def __init__(self, db: Session):
++        """Initialize the user service.
++
++        Args:
++            db: Database session.
++        """
++        self.db = db
++
++    async def get(self, user_id: int) -> Optional[User]:
++        """Get a user by ID.
++
++        Args:
++            user_id: The user's ID.
++
++        Returns:
++            User object if found, None otherwise.
++        """
++        return self.db.query(User).filter(User.id == user_id).first()
++
++    async def create(self, user_data: dict) -> User:
++        """Create a new user.
++
++        Args:
++            user_data: Dictionary with user data.
++
++        Returns:
++            The created User object.
++        """
++        user = User(**user_data)
++        self.db.add(user)
++        self.db.commit()
++        self.db.refresh(user)
++        return user
++
+diff --git a/docs/api.md b/docs/api.md
+index 111222..333444 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -10,6 +10,8 @@ Base URL: `https://api.example.com/v1`
+
+ Get a user by their ID.
+
+-**Parameters:** None
++**Parameters:**
++- `include_profile` (optional): Include user profile data
++- `include_settings` (optional): Include user settings
+
+ **Response:** User object

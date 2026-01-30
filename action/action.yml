@@ -1,0 +1,105 @@
+name: 'Omni-Doc Analysis'
+description: 'Analyze PR documentation gaps and post recommendations'
+author: 'omni-doc'
+
+branding:
+  icon: 'file-text'
+  color: 'blue'
+
+inputs:
+  github-token:
+    description: 'GitHub token for API access'
+    required: true
+    default: ${{ github.token }}
+  google-api-key:
+    description: 'Google API key for Gemini LLM'
+    required: true
+  pr-url:
+    description: 'PR URL to analyze (auto-detected if not provided)'
+    required: false
+  enable-diagrams:
+    description: 'Generate Mermaid diagrams for complex flows'
+    required: false
+    default: 'true'
+  skip-labels:
+    description: 'Comma-separated labels that skip analysis'
+    required: false
+    default: 'skip-docs,dependencies,dependabot'
+  dry-run:
+    description: 'Run analysis without posting comment'
+    required: false
+    default: 'false'
+
+outputs:
+  findings-count:
+    description: 'Number of documentation issues found'
+    value: ${{ steps.analyze.outputs.findings-count }}
+  comment-url:
+    description: 'URL of the posted comment'
+    value: ${{ steps.analyze.outputs.comment-url }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install omni-doc
+      shell: bash
+      run: |
+        pip install git+https://github.com/readalong/omni-doc.git
+
+    - name: Check skip labels
+      id: check-skip
+      shell: bash
+      run: |
+        LABELS='${{ toJson(github.event.pull_request.labels.*.name) }}'
+        SKIP_LABELS="${{ inputs.skip-labels }}"
+
+        # Convert skip-labels to regex pattern
+        PATTERN=$(echo "$SKIP_LABELS" | tr ',' '|')
+
+        if echo "$LABELS" | grep -qiE "\"($PATTERN)\""; then
+          echo "skip=true" >> $GITHUB_OUTPUT
+          echo "Skipping analysis due to label"
+        else
+          echo "skip=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Run Analysis
+      id: analyze
+      if: steps.check-skip.outputs.skip != 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+      run: |
+        # Determine PR URL
+        PR_URL="${{ inputs.pr-url }}"
+        if [ -z "$PR_URL" ]; then
+          PR_URL="${{ github.event.pull_request.html_url }}"
+        fi
+
+        if [ -z "$PR_URL" ]; then
+          echo "::error::No PR URL provided and not running in PR context"
+          exit 1
+        fi
+
+        # Build command
+        CMD="omni-doc analyze '$PR_URL'"
+
+        if [ "${{ inputs.enable-diagrams }}" = "false" ]; then
+          CMD="$CMD --no-diagrams"
+        fi
+
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          CMD="$CMD --dry-run"
+        fi
+
+        # Run analysis
+        echo "Running: $CMD"
+        eval $CMD
+
+        # Outputs are set automatically by omni-doc CLI via GITHUB_OUTPUT

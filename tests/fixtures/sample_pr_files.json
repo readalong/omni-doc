@@ -1,0 +1,38 @@
+[
+  {
+    "sha": "abc123456789",
+    "filename": "src/api/endpoints.py",
+    "status": "modified",
+    "additions": 25,
+    "deletions": 3,
+    "changes": 28,
+    "blob_url": "https://github.com/example-org/example-repo/blob/abc123/src/api/endpoints.py",
+    "raw_url": "https://github.com/example-org/example-repo/raw/abc123/src/api/endpoints.py",
+    "contents_url": "https://api.github.com/repos/example-org/example-repo/contents/src/api/endpoints.py?ref=abc123",
+    "patch": "@@ -15,8 +15,15 @@ from .models import User, Response\n \n router = APIRouter()\n \n+\n @router.get(\"/users/{user_id}\")\n-async def get_user(user_id: int) -> User:\n+async def get_user(\n+    user_id: int,\n+    include_profile: bool = False,\n+    include_settings: bool = False,\n+) -> User:\n     \"\"\"Get a user by ID.\n \n     Args:\n@@ -24,9 +31,24 @@ async def get_user(user_id: int) -> User:\n+        include_profile: If True, include user profile data.\n+        include_settings: If True, include user settings.\n \n     Returns:\n         User object with the specified ID.\n+\n+    Raises:\n+        HTTPException: If user is not found.\n     \"\"\"\n-    return await user_service.get(user_id)\n+    user = await user_service.get(user_id)\n+    if not user:\n+        raise HTTPException(status_code=404, detail=\"User not found\")\n+\n+    if include_profile:\n+        user.profile = await profile_service.get(user_id)\n+\n+    if include_settings:\n+        user.settings = await settings_service.get(user_id)\n+\n+    return user"
+  },
+  {
+    "sha": "def456789012",
+    "filename": "src/services/user_service.py",
+    "status": "added",
+    "additions": 45,
+    "deletions": 0,
+    "changes": 45,
+    "blob_url": "https://github.com/example-org/example-repo/blob/abc123/src/services/user_service.py",
+    "raw_url": "https://github.com/example-org/example-repo/raw/abc123/src/services/user_service.py",
+    "contents_url": "https://api.github.com/repos/example-org/example-repo/contents/src/services/user_service.py?ref=abc123",
+    "patch": "@@ -0,0 +1,45 @@\n+\"\"\"User service module for handling user operations.\"\"\"\n+\n+from typing import Optional\n+from sqlalchemy.orm import Session\n+\n+from .models import User\n+from .database import get_db\n+\n+\n+class UserService:\n+    \"\"\"Service class for user operations.\"\"\"\n+\n+    def __init__(self, db: Session):\n+        \"\"\"Initialize the user service.\"\"\"\n+        self.db = db\n+\n+    async def get(self, user_id: int) -> Optional[User]:\n+        \"\"\"Get a user by ID.\"\"\"\n+        return self.db.query(User).filter(User.id == user_id).first()\n+\n+    async def create(self, user_data: dict) -> User:\n+        \"\"\"Create a new user.\"\"\"\n+        user = User(**user_data)\n+        self.db.add(user)\n+        self.db.commit()\n+        self.db.refresh(user)\n+        return user"
+  },
+  {
+    "sha": "ghi789012345",
+    "filename": "docs/api.md",
+    "status": "modified",
+    "additions": 5,
+    "deletions": 1,
+    "changes": 6,
+    "blob_url": "https://github.com/example-org/example-repo/blob/abc123/docs/api.md",
+    "raw_url": "https://github.com/example-org/example-repo/raw/abc123/docs/api.md",
+    "contents_url": "https://api.github.com/repos/example-org/example-repo/contents/docs/api.md?ref=abc123",
+    "patch": "@@ -10,6 +10,8 @@ Base URL: `https://api.example.com/v1`\n \n Get a user by their ID.\n \n-**Parameters:** None\n+**Parameters:**\n+- `include_profile` (optional): Include user profile data\n+- `include_settings` (optional): Include user settings\n \n **Response:** User object"
+  }
+]
