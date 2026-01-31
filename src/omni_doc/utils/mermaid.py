@@ -7,8 +7,9 @@ from omni_doc.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Characters that need special handling in Mermaid node labels
-SPECIAL_CHARS = ['(', ')', '[', ']', '{', '}', '<', '>', '"', "'", '&', '#', ';']
+# Characters that cause issues in Mermaid labels
+PROBLEMATIC_IN_EDGE_LABELS = ['(', ')', '[', ']', '{', '}', '<', '>', '"', '#', ';', '|']
+PROBLEMATIC_IN_NODE_LABELS = ['(', ')', '&', '#', '<', '>']
 
 # Common Mermaid syntax patterns
 FLOWCHART_PATTERN = re.compile(r'^(flowchart|graph)\s+(TD|TB|BT|RL|LR)', re.MULTILINE)
@@ -16,10 +17,17 @@ SEQUENCE_PATTERN = re.compile(r'^sequenceDiagram', re.MULTILINE)
 CLASS_PATTERN = re.compile(r'^classDiagram', re.MULTILINE)
 STATE_PATTERN = re.compile(r'^stateDiagram', re.MULTILINE)
 
+# Edge label pattern: matches -->|label|, ---|label|, -.->|label|, ==>|label|, etc.
+# Captures the edge operator, the label, and what follows
+EDGE_LABEL_PATTERN = re.compile(
+    r'(--?>|---|-\.->|==?>|~~>|--o|--x|<-->|<-\.->|<==?>)'  # Edge operators
+    r'\|([^|]*)\|'  # Label between pipes
+)
+
 # Node definition patterns - captures node ID and label
 # Matches: A[label], A(label), A{label}, A((label)), A>label], A[/label/], etc.
-NODE_PATTERN = re.compile(
-    r'([A-Za-z_][A-Za-z0-9_]*)\s*'  # Node ID
+NODE_LABEL_PATTERN = re.compile(
+    r'(\b[A-Za-z_][A-Za-z0-9_]*)\s*'  # Node ID
     r'(\[|\(|\{|\[\[|\(\(|\[\(|\[/|>\[?)'  # Opening bracket
     r'([^\]\)\}]+?)'  # Label content (non-greedy)
     r'(\]|\)|\}|\]\]|\)\)|\)\]|/\]|\])'  # Closing bracket
@@ -29,7 +37,8 @@ NODE_PATTERN = re.compile(
 def validate_mermaid(diagram_code: str) -> Tuple[bool, Optional[str]]:
     """Validate Mermaid diagram syntax.
 
-    Performs basic syntax validation without actually rendering.
+    Performs syntax validation to catch common issues that would
+    prevent the diagram from rendering.
 
     Args:
         diagram_code: The Mermaid diagram code
@@ -53,13 +62,48 @@ def validate_mermaid(diagram_code: str) -> Tuple[bool, Optional[str]]:
     if not has_valid_type:
         return False, "No valid diagram type found (flowchart, sequenceDiagram, classDiagram, stateDiagram)"
 
-    # Check for unbalanced brackets in the overall code
+    # Check for unbalanced brackets (excluding edge labels)
+    is_balanced, bracket_error = _check_bracket_balance(code)
+    if not is_balanced:
+        return False, bracket_error
+
+    # Check for problematic edge labels
+    edge_issues = _check_edge_labels(code)
+    if edge_issues:
+        return False, edge_issues
+
+    # Check for problematic node labels
+    node_issues = _check_node_labels(code)
+    if node_issues:
+        return False, node_issues
+
+    return True, None
+
+
+def _check_bracket_balance(code: str) -> Tuple[bool, Optional[str]]:
+    """Check for unbalanced brackets in code.
+
+    Args:
+        code: Mermaid diagram code
+
+    Returns:
+        Tuple of (is_balanced, error_message)
+    """
     brackets = {'[': ']', '(': ')', '{': '}'}
     stack = []
     in_string = False
+    in_edge_label = False
     string_char = None
 
     for i, char in enumerate(code):
+        # Track edge labels (|...|) - skip bracket checking inside them
+        if char == '|' and not in_string:
+            in_edge_label = not in_edge_label
+            continue
+
+        if in_edge_label:
+            continue
+
         # Handle string literals
         if char in ['"', "'"] and (i == 0 or code[i-1] != '\\'):
             if not in_string:
@@ -74,35 +118,69 @@ def validate_mermaid(diagram_code: str) -> Tuple[bool, Optional[str]]:
             continue
 
         if char in brackets:
-            stack.append(char)
+            stack.append((char, i))
         elif char in brackets.values():
             if not stack:
                 return False, f"Unbalanced bracket '{char}' at position {i}"
-            expected = brackets[stack.pop()]
-            if char != expected:
-                return False, f"Mismatched bracket: expected '{expected}', got '{char}' at position {i}"
+            expected_open, _ = stack.pop()
+            expected_close = brackets[expected_open]
+            if char != expected_close:
+                return False, f"Mismatched bracket: expected '{expected_close}', got '{char}' at position {i}"
 
     if stack:
-        return False, f"Unclosed brackets: {stack}"
-
-    # Check for problematic patterns in node labels
-    for match in NODE_PATTERN.finditer(code):
-        label = match.group(3)
-        # Check for unquoted special characters
-        if any(c in label for c in ['(', ')']) and '"' not in match.group(0):
-            # Parentheses in unquoted labels can cause issues
-            node_id = match.group(1)
-            return False, f"Node '{node_id}' has parentheses in label without quotes: {label}"
+        unclosed = [b[0] for b in stack]
+        return False, f"Unclosed brackets: {unclosed}"
 
     return True, None
+
+
+def _check_edge_labels(code: str) -> Optional[str]:
+    """Check for problematic characters in edge labels.
+
+    Args:
+        code: Mermaid diagram code
+
+    Returns:
+        Error message if issues found, None otherwise
+    """
+    for match in EDGE_LABEL_PATTERN.finditer(code):
+        label = match.group(2)
+        # Check for problematic characters in edge labels
+        for char in PROBLEMATIC_IN_EDGE_LABELS:
+            if char in label and char != '|':  # | is the delimiter, already handled
+                return f"Edge label contains problematic character '{char}': |{label}|"
+
+    return None
+
+
+def _check_node_labels(code: str) -> Optional[str]:
+    """Check for problematic characters in node labels.
+
+    Args:
+        code: Mermaid diagram code
+
+    Returns:
+        Error message if issues found, None otherwise
+    """
+    for match in NODE_LABEL_PATTERN.finditer(code):
+        label = match.group(3)
+        node_id = match.group(1)
+
+        # Check if label has problematic chars and isn't quoted
+        if '"' not in match.group(0):  # Not already quoted
+            for char in PROBLEMATIC_IN_NODE_LABELS:
+                if char in label:
+                    return f"Node '{node_id}' has unquoted special character '{char}' in label: {label}"
+
+    return None
 
 
 def sanitize_mermaid(diagram_code: str) -> str:
     """Sanitize Mermaid diagram code to fix common issues.
 
     Fixes:
-    - Unquoted labels with special characters
-    - Common syntax errors
+    - Problematic characters in edge labels (removes parentheses, brackets, etc.)
+    - Unquoted labels with special characters in node definitions
 
     Args:
         diagram_code: The Mermaid diagram code
@@ -113,7 +191,56 @@ def sanitize_mermaid(diagram_code: str) -> str:
     if not diagram_code:
         return diagram_code
 
-    lines = diagram_code.split('\n')
+    code = diagram_code
+
+    # First pass: sanitize edge labels
+    code = _sanitize_edge_labels(code)
+
+    # Second pass: sanitize node labels
+    code = _sanitize_node_labels(code)
+
+    return code
+
+
+def _sanitize_edge_labels(code: str) -> str:
+    """Sanitize edge labels by removing problematic characters.
+
+    Args:
+        code: Mermaid diagram code
+
+    Returns:
+        Code with sanitized edge labels
+    """
+    def clean_edge_label(match):
+        edge_op = match.group(1)
+        label = match.group(2)
+
+        # Remove problematic characters from edge labels
+        # Replace parentheses content like "(Markdown)" with just the word
+        cleaned = re.sub(r'\s*\([^)]*\)', '', label)
+
+        # Remove any remaining problematic characters
+        for char in ['[', ']', '{', '}', '<', '>', '#', ';']:
+            cleaned = cleaned.replace(char, '')
+
+        # Clean up extra whitespace
+        cleaned = ' '.join(cleaned.split())
+
+        return f'{edge_op}|{cleaned}|'
+
+    return EDGE_LABEL_PATTERN.sub(clean_edge_label, code)
+
+
+def _sanitize_node_labels(code: str) -> str:
+    """Sanitize node labels in the code.
+
+    Args:
+        code: Mermaid diagram code
+
+    Returns:
+        Code with sanitized node labels
+    """
+    lines = code.split('\n')
     sanitized_lines = []
 
     for line in lines:
@@ -122,14 +249,13 @@ def sanitize_mermaid(diagram_code: str) -> str:
             sanitized_lines.append(line)
             continue
 
-        # Fix node labels with special characters
-        sanitized_line = _sanitize_node_labels(line)
+        sanitized_line = _sanitize_node_labels_in_line(line)
         sanitized_lines.append(sanitized_line)
 
     return '\n'.join(sanitized_lines)
 
 
-def _sanitize_node_labels(line: str) -> str:
+def _sanitize_node_labels_in_line(line: str) -> str:
     """Sanitize node labels in a single line.
 
     Args:
@@ -138,40 +264,40 @@ def _sanitize_node_labels(line: str) -> str:
     Returns:
         Line with sanitized node labels
     """
-    # Simpler approach: find patterns like X[text with (parens)] and quote them
-    # Pattern matches node definitions: ID[label], ID(label), ID{label}
     result = line
 
-    # Find all node labels that need quoting
-    # Pattern: word followed by [ then content then ]
-    import re
-    node_pattern = re.compile(r'(\b[A-Za-z_][A-Za-z0-9_]*)\[([^\]"]+)\]')
+    # Pattern for square bracket nodes: ID[label]
+    square_pattern = re.compile(r'(\b[A-Za-z_][A-Za-z0-9_]*)\[([^\]"]+)\]')
 
-    def quote_if_needed(match):
+    def quote_square_if_needed(match):
         node_id = match.group(1)
         label = match.group(2)
 
-        # Check if label needs quoting (has special chars and isn't already quoted)
-        needs_quoting = any(c in label for c in ['(', ')', '&', '#', '<', '>'])
+        # Check if label needs quoting
+        needs_quoting = any(c in label for c in PROBLEMATIC_IN_NODE_LABELS)
 
         if needs_quoting:
-            # Quote the label
             escaped_label = label.replace('"', '\\"')
             return f'{node_id}["{escaped_label}"]'
 
         return match.group(0)
 
-    result = node_pattern.sub(quote_if_needed, result)
+    result = square_pattern.sub(quote_square_if_needed, result)
 
-    # Also handle round brackets () which are used for rounded nodes
-    round_pattern = re.compile(r'(\b[A-Za-z_][A-Za-z0-9_]*)\(([^\)"]+)\)')
+    # Pattern for round bracket nodes: ID(label)
+    # Be careful not to match function calls or edge labels
+    round_pattern = re.compile(r'(\b[A-Za-z_][A-Za-z0-9_]*)\(([^\)"]+)\)(?!\|)')
 
     def quote_round_if_needed(match):
         node_id = match.group(1)
         label = match.group(2)
 
+        # Skip if this looks like a function call (followed by certain patterns)
+        if node_id.lower() in ['subgraph', 'end', 'click', 'style', 'class', 'linkstyle']:
+            return match.group(0)
+
         # Check if label needs quoting
-        needs_quoting = any(c in label for c in ['(', ')', '&', '#', '<', '>'])
+        needs_quoting = any(c in label for c in PROBLEMATIC_IN_NODE_LABELS)
 
         if needs_quoting:
             escaped_label = label.replace('"', '\\"')
@@ -205,3 +331,37 @@ def extract_diagram_code(text: str) -> Optional[str]:
         return text.strip()
 
     return None
+
+
+def validate_and_sanitize(diagram_code: str) -> Tuple[str, bool, Optional[str]]:
+    """Validate and sanitize a Mermaid diagram in one call.
+
+    This is the recommended function to use - it validates, sanitizes,
+    and re-validates to ensure the output is clean.
+
+    Args:
+        diagram_code: The Mermaid diagram code
+
+    Returns:
+        Tuple of (sanitized_code, is_valid, error_message)
+    """
+    if not diagram_code:
+        return "", False, "Empty diagram code"
+
+    # First validation
+    is_valid, error = validate_mermaid(diagram_code)
+
+    if not is_valid:
+        logger.debug(f"Initial validation failed: {error}")
+
+    # Always sanitize
+    sanitized = sanitize_mermaid(diagram_code)
+
+    # Re-validate
+    is_valid_after, error_after = validate_mermaid(sanitized)
+
+    if is_valid_after:
+        return sanitized, True, None
+    else:
+        logger.warning(f"Diagram still invalid after sanitization: {error_after}")
+        return sanitized, False, error_after

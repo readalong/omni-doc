@@ -19,14 +19,12 @@ class AnalysisFinding(BaseModel):
     title: str = Field(
         ...,
         min_length=5,
-        max_length=200,
         description="Brief title describing the finding",
     )
     description: str = Field(
         ...,
         min_length=10,
-        max_length=300,
-        description="Concise description of what needs to change (1-2 sentences max)",
+        description="Concise description of what needs to change.",
     )
     file_path: Optional[str] = Field(
         default=None,

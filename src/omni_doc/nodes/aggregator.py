@@ -218,7 +218,8 @@ def _generate_comprehensive_docs_report(
                 description=finding.get("description", ""),
                 severity=finding.get("severity", "info"),
                 file_path=finding.get("file_path"),
-                suggestion=finding.get("suggestion"),
+                target_section=finding.get("target_section"),
+                recommended_update=finding.get("recommended_update"),
             ))
             parts.append("")
 

@@ -7,7 +7,7 @@ from omni_doc.agents.base import BaseDocAgent
 from omni_doc.models.output_models import DiagramOutput
 from omni_doc.models.state import AgentOutputRecord, AnalysisFindingRecord, OmniDocState
 from omni_doc.utils.logging import get_logger
-from omni_doc.utils.mermaid import sanitize_mermaid, validate_mermaid
+from omni_doc.utils.mermaid import validate_and_sanitize
 
 logger = get_logger(__name__)
 
@@ -73,11 +73,23 @@ stateDiagram-v2
     Error --> Idle : retry
 ```
 
+## IMPORTANT: Mermaid Syntax Rules
+
+**Node labels - use quotes for special characters:**
+- CORRECT: `B["Data File (CSV)"]`
+- WRONG: `B[Data File (CSV)]`
+
+**Edge labels - NEVER use parentheses or brackets:**
+- CORRECT: `-->|Save Report|`
+- WRONG: `-->|Save Report (Markdown)|`
+- CORRECT: `-->|Audio File|`
+- WRONG: `-->|Output (WAV)|`
+
 ## Guidelines:
 
 1. Choose the right diagram type for the concept
 2. Keep diagrams simple (5-15 nodes maximum)
-3. Use clear, concise labels
+3. Use clear, concise labels (no special chars in edge labels)
 4. Group related elements
 5. Use consistent arrow styles
 
@@ -98,16 +110,24 @@ This repository has no documentation. Your job is to create a clear, informative
 
 ## MANDATORY: Mermaid Syntax Rules
 
-**ALWAYS use quotes for ANY label containing special characters:**
+**Node labels - ALWAYS use quotes for special characters:**
 - CORRECT: `B["Historical Job URLs (CSV)"]`
 - WRONG: `B[Historical Job URLs (CSV)]`
 
-**Special characters that REQUIRE quotes:** `( ) [ ] { } < > & # ; ,`
+**Edge labels - NEVER use parentheses, brackets, or special characters:**
+- CORRECT: `-->|Save Report|`
+- WRONG: `-->|Save Report (Markdown)|`
+- CORRECT: `-->|Audio Output|`
+- WRONG: `-->|Save Audio (WAV)|`
+
+**Special characters in node labels that REQUIRE quotes:** `( ) [ ] { } < > & # ; ,`
+**Characters FORBIDDEN in edge labels:** `( ) [ ] { } < > # ;`
 
 **Other rules:**
 - Use `subgraph Name` ... `end` for grouping
 - Use `-->` for arrows, `-->|label|` for labeled arrows
 - Node IDs must be alphanumeric (A, B, C or Config, Input, etc.)
+- Keep edge labels simple: 2-4 words, no special characters
 
 ## Your Task:
 
@@ -223,21 +243,12 @@ class VisualArchitectAgent(BaseDocAgent[DiagramOutput]):
         response = await self._invoke(context)
 
         # Validate and sanitize the generated diagram
-        diagram_code = response.diagram_code
-        is_valid, error = validate_mermaid(diagram_code)
+        diagram_code, is_valid, error = validate_and_sanitize(response.diagram_code)
 
         if not is_valid:
-            logger.warning(f"Generated diagram has validation issues: {error}")
-            # Try to sanitize it
-            diagram_code = sanitize_mermaid(diagram_code)
-            is_valid_after, error_after = validate_mermaid(diagram_code)
-            if is_valid_after:
-                logger.info("Diagram sanitized successfully")
-            else:
-                logger.warning(f"Diagram still has issues after sanitization: {error_after}")
+            logger.warning(f"Diagram validation issues after sanitization: {error}")
         else:
-            # Even if valid, sanitize to ensure safety
-            diagram_code = sanitize_mermaid(diagram_code)
+            logger.debug("Diagram validated and sanitized successfully")
 
         # Convert finding to state format
         finding = AnalysisFindingRecord(
