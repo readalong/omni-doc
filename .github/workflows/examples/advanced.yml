@@ -42,7 +42,7 @@ jobs:
 
       - name: Run Omni-Doc
         if: steps.labels.outputs.skip != 'true'
-        uses: readalong/omni-doc@v1
+        uses: readalong/omni-doc/action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           google-api-key: ${{ secrets.GOOGLE_API_KEY }}

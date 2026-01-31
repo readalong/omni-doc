@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Run Omni-Doc
-        uses: readalong/omni-doc@v1
+        uses: readalong/omni-doc/action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           google-api-key: ${{ secrets.GOOGLE_API_KEY }}
