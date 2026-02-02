@@ -1,0 +1,42 @@
+name: Update Major Tag
+
+# Triggers when a Release is published
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # We need to fetch tags to ensure we can manipulate them
+          fetch-depth: 0
+
+      - name: Update Major Tag
+        run: |
+          # 1. Get the release tag name (e.g., "v2.1.0")
+          TAG_NAME=${{ github.event.release.tag_name }}
+          
+          # 2. Extract the major version (e.g., "v2")
+          # This regex matches the 'v' followed by digits until the first dot
+          MAJOR_TAG=$(echo "$TAG_NAME" | sed -E 's/^(v[0-9]+)\..*/\1/')
+          
+          echo "Release tag: $TAG_NAME"
+          echo "Major tag to update: $MAJOR_TAG"
+
+          # 3. Configure git user (required for pushing tags)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 4. Create/Move the major tag locally
+          # -f forces the tag to move if it already exists
+          git tag -f "$MAJOR_TAG" "$TAG_NAME"
+
+          # 5. Push the tag to the remote repository
+          git push origin "$MAJOR_TAG" --force
